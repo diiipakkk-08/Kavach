@@ -47,8 +47,8 @@ export class GeminiPrivacyAnalyzer {
   private visionModel: any;
 
   // Gemma 4 via Gemini API — open-weight model
-  private static readonly MODEL_NAME = 'gemma-3-27b-it';
-  private static readonly VISION_MODEL_NAME = 'gemma-3-27b-it';
+  private static readonly MODEL_NAME = 'gemini-1.5-flash';
+  private static readonly VISION_MODEL_NAME = 'gemini-1.5-flash';
 
   // 5-vector weights — must sum to 1.0
   private static readonly WEIGHTS = {
@@ -126,6 +126,7 @@ Look for:
 4. Financial info (Credit/Debit card numbers, CVVs, bank statements, UPI IDs, checks).
 5. Personal contact info (Residential physical address, private phone numbers, personal email addresses).
 6. Sensitive documents (Medical reports, confidential work chats, signatures, contracts).
+7. Personal Names (e.g. names printed on tickets, ID badges, forms, certificates, or written on paper).
 
 IMPORTANT:
 - In "detectedItems", state EXACTLY what is visible with specific context (e.g. "Visible WiFi password text on router sticker", "Clear face photo suitable for biometric facial profiling", "PAN Card with visible number and signature").

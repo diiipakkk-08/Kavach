@@ -233,9 +233,9 @@ class ContentScript {
         const primaryScript = shadyAdScripts[0] as HTMLScriptElement;
         findings.push({
           id: 'malvertising_scripts',
-          severity: 'HIGH',
-          title: `${shadyAdScripts.length} Aggressive Ad / Popunder Script(s)`,
-          description: `Page executes ${shadyAdScripts.length} third-party ad syndication script(s). Designed to spawn popunder windows, redirect user clicks, or mine telemetry.`,
+          severity: isAuthenticPlatform ? 'LOW' : 'HIGH',
+          title: isAuthenticPlatform ? `${shadyAdScripts.length} Standard Ad Script(s)` : `${shadyAdScripts.length} Aggressive Ad / Popunder Script(s)`,
+          description: isAuthenticPlatform ? `Page executes ${shadyAdScripts.length} standard commercial ad script(s).` : `Page executes ${shadyAdScripts.length} third-party ad syndication script(s). Designed to spawn popunder windows, redirect user clicks, or mine telemetry.`,
           category: 'scripts',
           evidenceUrl: primaryScript.src,
           destinationUrl: primaryScript.src,
@@ -289,7 +289,7 @@ class ContentScript {
         return false;
       });
 
-      if (suspiciousOverlays.length > 0 || isTorrentOrPiracy) {
+      if ((suspiciousOverlays.length > 0 || isTorrentOrPiracy) && !isAuthenticPlatform) {
         suspiciousOverlays.forEach((el, idx) => el.setAttribute('data-kavach-sec', `clickjack_overlay_${idx}`));
         findings.push({
           id: 'clickjack_overlay',
@@ -787,7 +787,11 @@ class ContentScript {
 
   // ─── Real-Time Clickjack & Popunder Neutralizer ──────────────────────────
   private setupActiveClickjackNeutralizer(): void {
-    const isTorrentOrAdHeavy = /1337x|torrent|pirate|rarbg|yts|fmovies|123movies|stream|download/i.test(window.location.hostname);
+    const currentHost = window.location.hostname.toLowerCase();
+    const isAuthenticPlatform = currentHost.includes('google.com') || currentHost.includes('youtube.com') || currentHost.includes('github.com') || currentHost.includes('microsoft.com') || currentHost.includes('apple.com');
+    if (isAuthenticPlatform) return; // Do not disarm overlays on trusted platforms
+
+    const isTorrentOrAdHeavy = /1337x|torrent|pirate|rarbg|yts|fmovies|123movies|stream|download/i.test(currentHost);
 
     const scanAndDisarmOverlays = () => {
       const candidates = document.querySelectorAll('div, a, iframe, span');

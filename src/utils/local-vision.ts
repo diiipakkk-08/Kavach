@@ -56,8 +56,8 @@ export class LocalVisionEngine {
     // 3. Browser-level OCR / TextDetector / Canvas Analysis
     await this.scanBrowserCanvasAndText(file, findings);
 
-    // 4. Inspect PNG/JPEG embedded chunks
-    await this.scanFileChunksForText(file, findings);
+    // 4. Inspect PNG/JPEG embedded chunks (Disabled: Causes false positives from random binary ASCII matches)
+    // await this.scanFileChunksForText(file, findings);
 
     // 5. Filename-based credential hints
     const nameLower = file.name.toLowerCase();
@@ -149,10 +149,7 @@ export class LocalVisionEngine {
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             this.detectHumanFaceSkinClusters(imgData, findings);
-            this.detectMaskedPasswordBullets(imgData, findings);
-            this.detectCredentialInputBoxes(imgData, findings);
-            this.detectEmailAtSymbol(imgData, findings);
-            this.detectHighDensityTextRegions(imgData, findings, file.name);
+            // Removed naive heuristics to prevent false positives.
           }
 
           URL.revokeObjectURL(url);

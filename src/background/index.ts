@@ -1003,12 +1003,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
   }
-  if (request.action === 'scanImageForPII' && request.base64Image) {
-    KavachAIService.scanImageWithAI(request.base64Image, request.mimeType)
-      .then(res => sendResponse({ success: !!res, data: res }))
-      .catch(() => sendResponse({ success: false }));
-    return true;
-  }
   if (request.action === 'testGeminiApiKey' && request.apiKey) {
     KavachAIService.testApiKey(request.apiKey)
       .then(res => sendResponse(res))
