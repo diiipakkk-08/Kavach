@@ -1,0 +1,50 @@
+{
+  "name": "kavach-backend",
+  "version": "2.0.0",
+  "description": "Backend API for Kavach Privacy Guardian Chrome Extension — Gemma 4 Powered",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "nodemon --exec ts-node src/server.ts",
+    "build": "tsc --skipLibCheck",
+    "start": "node dist/server.js",
+    "setup": "node setup.js",
+    "test": "node test.js",
+    "postinstall": "npm run build"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "dotenv": "^16.3.1",
+    "@google/generative-ai": "^0.21.0",
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "piexifjs": "^1.0.6",
+    "@types/node": "^20.10.5",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/cheerio": "^0.22.35",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "privacy",
+    "chrome-extension",
+    "ai",
+    "gemma",
+    "gemma-4",
+    "gdpr",
+    "ccpa",
+    "dpdp",
+    "open-source"
+  ],
+  "author": "Kavach Privacy Guardian",
+  "license": "MIT"
+}

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kavach 2.0 — Upload Guard & Security Exposure Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 40px 20px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 620px;
+      width: 100%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      margin-bottom: 24px;
+      border: 1px solid #e2e8f0;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 24px;
+      margin-top: 0;
+      color: #007E36;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    p {
+      color: #475569;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .upload-box {
+      border: 2px dashed #007E36;
+      background: #f0fdf4;
+      border-radius: 12px;
+      padding: 30px 20px;
+      text-align: center;
+      margin: 20px 0;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .upload-box:hover {
+      background: #dcfce7;
+      transform: translateY(-2px);
+    }
+    .upload-icon {
+      font-size: 42px;
+      margin-bottom: 10px;
+      display: block;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .btn {
+      background: #007E36;
+      color: #ffffff;
+      border: none;
+      padding: 10px 22px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-block;
+      margin-top: 8px;
+      transition: background 0.15s ease;
+    }
+    .btn:hover {
+      background: #005a26;
+    }
+    .demo-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .demo-btn {
+      flex: 1;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #1e293b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .demo-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    .status-area {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      font-size: 13px;
+      color: #334155;
+      line-height: 1.5;
+    }
+    .badge {
+      display: inline-block;
+      background: #dcfce7;
+      color: #166534;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+    .features-list {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 14px 18px;
+      border: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: #334155;
+      margin-top: 18px;
+    }
+    .features-list ul {
+      margin: 6px 0 0 16px;
+      padding: 0;
+    }
+    .features-list li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <span class="badge">INTERACTIVE TEST ENVIRONMENT</span>
+    <h1>🛡️ Kavach 2.0 Upload & Security Lab</h1>
+    <p>
+      Test Kavach's <strong>Pre-Upload Firewall</strong>. When you pick or generate a photo, Kavach stops the upload before this webpage can access it, parses embedded GPS coordinates and camera hardware, runs AI visual inspection, and allows you to strip metadata or cancel.
+    </p>
+
+    <!-- File Upload Section -->
+    <div class="upload-box" onclick="document.getElementById('testFileInput').click()">
+      <span class="upload-icon">📸</span>
+      <strong style="display:block; font-size:15px; color:#1e293b;">Click to Choose Image from Computer</strong>
+      <span style="font-size:12px; color:#64748b;">Supports JPEG, PNG, or any camera photo</span>
+      <div>
+        <button type="button" class="btn">Browse Files</button>
+      </div>
+      <input type="file" id="testFileInput" accept="image/*">
+    </div>
+
+    <!-- Quick Demo Generators for Hackathon Judges -->
+    <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+      Quick Test Buttons (One-Click Test Samples):
+    </div>
+    <div class="demo-bar" style="flex-wrap: wrap;">
+      <button class="demo-btn" id="btnGenGps" type="button">
+        📍 1. Embedded GPS Photo
+      </button>
+      <button class="demo-btn" id="btnGenFace" type="button">
+        👤 2. Face / Portrait Biometrics
+      </button>
+      <button class="demo-btn" id="btnGenPassword" type="button">
+        🔑 3. Sensitive Password Screenshot
+      </button>
+    </div>
+
+    <div class="status-area" id="statusMessage">
+      ℹ️ <strong>Status:</strong> Waiting for file selection. Select a file or click a test sample above.
+    </div>
+
+    <div class="features-list">
+      <strong>🔍 What to test:</strong>
+      <ul>
+        <li><strong>Pre-upload block:</strong> The website gets ZERO bytes until you click "Clean & Upload" or "Upload As-Is".</li>
+        <li><strong>Exact coordinates:</strong> GPS Latitude & Longitude are displayed in DMS and decimal with a Google Maps link.</li>
+        <li><strong>Cancel & Block:</strong> Discards the file completely so the website receives nothing.</li>
+        <li><strong>Clean & Upload:</strong> Strips EXIF headers locally using HTML5 canvas before releasing.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Card 2: Password Destination & Security Scanner Test Lab -->
+  <div class="card">
+    <span class="badge" style="background: #e0f2fe; color: #0369a1;">SECURITY & AUDIT LAB</span>
+    <h2 style="font-size: 20px; margin-top: 0; color: #0369a1; display: flex; align-items: center; gap: 8px;">
+      🔑 Password Destination & Client Security Test
+    </h2>
+    <p>
+      Test Kavach's <strong>Password Destination Inspector</strong> and <strong>Client Security Scanner</strong>.
+    </p>
+
+    <!-- Test Login Form -->
+    <form id="testLoginForm" onsubmit="event.preventDefault();" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin-bottom:14px;">
+      <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:8px;">Test Password Form:</div>
+      <input type="text" placeholder="user@example.com" value="tester@kavach.local" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; margin-bottom:8px; box-sizing:border-box; font-size:13px;" />
+      <input type="password" id="testPasswordInput" placeholder="Password" value="MySuperSecret123!" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; margin-bottom:12px; box-sizing:border-box; font-size:13px;" />
+
+      <div style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:6px;">Choose Where to Submit Password:</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button type="button" class="btn" style="background:#16a34a; text-align:left; padding:8px 12px;" onclick="simulatePasswordSubmit('https://clerk.accounts.dev/v1/sign_in')">
+          🛡️ 1. Submit to Clerk IAM (Safe Enterprise Hash)
+        </button>
+        <button type="button" class="btn" style="background:#d97706; text-align:left; padding:8px 12px;" onclick="simulatePasswordSubmit('/api/auth/login')">
+          ⚠️ 2. Submit to Same-Origin Database (/api/auth/login)
+        </button>
+        <button type="button" class="btn" style="background:#dc2626; text-align:left; padding:8px 12px;" onclick="simulatePasswordSubmit('http://insecure-phishing-host.xyz/steal')">
+          🚨 3. Submit to Unencrypted / External Phishing Target
+        </button>
+      </div>
+      <div id="passwordAuditFeedback" style="display:none; margin-top:10px; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600;"></div>
+    </form>
+
+    <div class="features-list">
+      <strong>🔍 How to verify in Kavach:</strong>
+      <ul>
+        <li><strong>Open Kavach Popup</strong> &rarr; Click <strong>Security</strong> tab.</li>
+        <li><strong>Password Destination Audit:</strong> Displays destination provider and security custody card.</li>
+        <li><strong>Run Security Scan Now:</strong> Audits this page for exposed JWT tokens, AWS credentials, and Stripe keys in localStorage!</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Card 3: In-Page Ad Container & Highlight Test -->
+  <div class="card">
+    <span class="badge" style="background: #fef3c7; color: #92400e;">DOM SECURITY HIGHLIGHT LAB</span>
+    <h2 style="font-size: 19px; margin-top: 0; color: #b45309; display: flex; align-items: center; gap: 8px;">
+      👁️ On-Page Element Highlighting Test
+    </h2>
+    <p style="font-size: 13px;">
+      The elements below simulate third-party ad placements (like Google Ads / sponsored slots on YouTube) and unsafe reverse tabnabbing links. Open Kavach &rarr; <strong>Security</strong> &rarr; Click <strong>Run Security Scan</strong> &rarr; Click <strong>👁️ Highlight on Page</strong> to see Kavach scroll and highlight them live with a glowing outline and floating badge!
+    </p>
+
+    <!-- Simulated Ad Container -->
+    <div id="google_ads_banner_1" class="ad-container" style="background:#fffbeb; border:2px dashed #f59e0b; padding:16px; border-radius:10px; margin-bottom:12px; text-align:center;">
+      <span style="font-size:11px; font-weight:700; color:#b45309; text-transform:uppercase; letter-spacing:0.5px;">📢 Sponsored Ad Container (ins.adsbygoogle simulator)</span>
+      <div style="font-size:12px; color:#78350f; margin-top:4px;">Simulated promotional advertiser frame tracked by third-party ad syndication.</div>
+    </div>
+
+    <!-- Simulated Reverse Tabnabbing Link -->
+    <div style="padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+      <div style="font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">Simulated Tabnabbing Vulnerability:</div>
+      <a href="https://example.com/untrusted-partner" target="_blank" style="font-size:13px; color:#0284c7; text-decoration:underline; font-weight:600;">
+        🔗 External Partner Site (Opens in new tab without rel="noopener")
+      </a>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('testFileInput');
+    const statusMsg = document.getElementById('statusMessage');
+
+    fileInput.addEventListener('change', function(e) {
+      if (e.target.files && e.target.files.length > 0) {
+        const file = e.target.files[0];
+        statusMsg.innerHTML = `✅ <strong>File received by webpage:</strong> "${file.name}" (${(file.size / 1024).toFixed(1)} KB, type: ${file.type || 'unknown'}). Kavach permitted upload after your decision!`;
+        statusMsg.style.background = '#f0fdf4';
+        statusMsg.style.borderColor = '#bbf7d0';
+        statusMsg.style.color = '#166534';
+      } else {
+        statusMsg.innerHTML = '🛑 <strong>Upload blocked/cancelled:</strong> Kavach Upload Guard aborted the upload. No file was sent to the website.';
+        statusMsg.style.background = '#fef2f2';
+        statusMsg.style.borderColor = '#fecaca';
+        statusMsg.style.color = '#dc2626';
+      }
+    });
+
+    // ─── 1. Generator: JPEG with Real EXIF GPS Data ──────────────────────────
+    document.getElementById('btnGenGps').addEventListener('click', () => {
+      // Create a canvas image
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 300;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('Kolkata Hackathon Photo', 40, 120);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('Lat: 22.5726° N, Lon: 88.3639° E', 40, 160);
+      ctx.fillText('Device: Apple iPhone 15 Pro', 40, 190);
+
+      canvas.toBlob(blob => {
+        blob.arrayBuffer().then(buf => {
+          // Construct valid JPEG with APP1 EXIF segment containing GPS tags:
+          // Coordinates: 22° 34' 21.4" N, 88° 21' 49.8" E (Kolkata)
+          const exifBytes = createJpegWithExifGps(buf, 22, 34, 21.4, 'N', 88, 21, 49.8, 'E');
+          const file = new File([exifBytes], 'vacation_house_with_gps.jpg', { type: 'image/jpeg' });
+
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          fileInput.files = dt.files;
+          fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      }, 'image/jpeg');
+    });
+
+    // ─── 2. Generator: Human Face / Portrait Biometrics Sample ──────────────
+    document.getElementById('btnGenFace').addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d');
+
+      // Background
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(0, 0, 400, 400);
+
+      // Human Face Oval with calibrated skin tone in YCbCr range (Cb: ~105, Cr: ~155)
+      ctx.fillStyle = 'rgb(235, 185, 155)';
+      ctx.beginPath();
+      ctx.ellipse(200, 190, 80, 110, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Neck
+      ctx.fillStyle = 'rgb(220, 170, 140)';
+      ctx.fillRect(170, 280, 60, 60);
+
+      // Hair
+      ctx.fillStyle = '#1e1b18';
+      ctx.beginPath();
+      ctx.arc(200, 150, 85, Math.PI, Math.PI * 2);
+      ctx.fill();
+
+      // Eyes
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(170, 180, 14, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(230, 180, 14, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pupils
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(170, 180, 5, 0, Math.PI * 2);
+      ctx.arc(230, 180, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Smile
+      ctx.strokeStyle = '#991b1b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(200, 230, 30, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+
+      canvas.toBlob(blob => {
+        const file = new File([blob], 'user_portrait_selfie.png', { type: 'image/png' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }, 'image/png');
+    });
+
+    // ─── 3. Generator: Image with Plaintext Credentials ──────────────────────
+    document.getElementById('btnGenPassword').addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 520;
+      canvas.height = 320;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1e1e1e';
+      ctx.fillRect(0, 0, 520, 320);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText('CONFIDENTIAL ROUTER & SERVER CREDENTIALS', 30, 50);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '14px monospace';
+      ctx.fillText('Admin Email: dev_admin@kavach.org', 30, 95);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = '14px monospace';
+      ctx.fillText('SSID: Office_Private_5G', 30, 130);
+      ctx.fillText('WPA2-KEY: SecureAdmin99$Secret!', 30, 165);
+      ctx.fillText('Password: SuperSecretPass99!', 30, 200);
+      ctx.fillText('Google API Key: AIzaSyD9381exampleApiKeyGoogle33', 30, 235);
+      ctx.fillText('Internal IP: 192.168.1.1', 30, 270);
+
+      canvas.toBlob(blob => {
+        const file = new File([blob], 'screenshot_password_secret.png', { type: 'image/png' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }, 'image/png');
+    });
+
+    // Binary EXIF builder for demo purposes
+    function createJpegWithExifGps(origBuffer, latD, latM, latS, latRef, lonD, lonM, lonS, lonRef) {
+      const orig = new Uint8Array(origBuffer);
+      // Minimal APP1 TIFF segment containing Make, Model, and GPS IFD
+      const app1 = [
+        0xFF, 0xE1, // APP1 marker
+        0x00, 0xC4, // Length = 196 bytes
+        0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // "Exif\0\0"
+        0x49, 0x49, 0x2A, 0x00, // TIFF header: "II", 42
+        0x08, 0x00, 0x00, 0x00, // Offset to IFD0 = 8
+
+        // IFD0: 3 entries
+        0x03, 0x00,
+        // Tag 0x010F (Make): "Apple"
+        0x0F, 0x01, 0x02, 0x00, 0x06, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00,
+        // Tag 0x0110 (Model): "iPhone 15 Pro"
+        0x10, 0x01, 0x02, 0x00, 0x0E, 0x00, 0x00, 0x00, 0x38, 0x00, 0x00, 0x00,
+        // Tag 0x8825 (GPS IFD Pointer) -> offset 0x48
+        0x25, 0x88, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x00,
+        // Next IFD = 0
+        0x00, 0x00, 0x00, 0x00,
+
+        // Data for Make ("Apple\0")
+        0x41, 0x70, 0x70, 0x6C, 0x65, 0x00,
+        // Data for Model ("iPhone 15 Pro\0")
+        0x69, 0x50, 0x68, 0x6F, 0x6E, 0x65, 0x20, 0x31, 0x35, 0x20, 0x50, 0x72, 0x6F, 0x00,
+
+        // GPS IFD (at offset 0x48 = index 80 from TIFF start)
+        0x04, 0x00, // 4 entries
+        // Tag 0x0001 (GPSLatitudeRef)
+        0x01, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, latRef.charCodeAt(0), 0x00, 0x00, 0x00,
+        // Tag 0x0002 (GPSLatitude) -> offset 0x80
+        0x02, 0x00, 0x05, 0x00, 0x03, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
+        // Tag 0x0003 (GPSLongitudeRef)
+        0x03, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, lonRef.charCodeAt(0), 0x00, 0x00, 0x00,
+        // Tag 0x0004 (GPSLongitude) -> offset 0x98
+        0x04, 0x00, 0x05, 0x00, 0x03, 0x00, 0x00, 0x00, 0x98, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+
+        // 3 Rationals for Latitude: D/1, M/1, (S*10)/10
+        latD, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+        latM, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+        Math.round(latS * 10), 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00,
+
+        // 3 Rationals for Longitude: D/1, M/1, (S*10)/10
+        lonD, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+        lonM, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+        Math.round(lonS * 10), 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00,
+      ];
+
+      // Assemble: SOI (2) + APP1 (app1.length) + remainder of JPEG
+      const result = new Uint8Array(2 + app1.length + (orig.length - 2));
+      result[0] = 0xFF;
+      result[1] = 0xD8;
+      result.set(app1, 2);
+      result.set(orig.subarray(2), 2 + app1.length);
+      return result;
+    }
+
+    // Password destination test dispatcher
+    function simulatePasswordSubmit(targetAction) {
+      const form = document.getElementById('testLoginForm');
+      form.action = targetAction;
+      const evt = new Event('submit', { bubbles: true, cancelable: true });
+      form.dispatchEvent(evt);
+      const feedback = document.getElementById('passwordAuditFeedback');
+      feedback.style.display = 'block';
+      feedback.style.background = '#f0fdf4';
+      feedback.style.border = '1px solid #bbf7d0';
+      feedback.style.color = '#166534';
+      feedback.innerHTML = `✓ Form submit event dispatched to <code>${targetAction}</code>.<br>Open Kavach popup &rarr; <strong>Security</strong> tab to see the live audit card!`;
+    }
+
+    // Dummy test credentials in localStorage for the Security Exposure tab
+    localStorage.setItem('kavach_auth_jwt_token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.demo_token_exposure');
+    localStorage.setItem('aws_cognito_identity', 'us-east-1:3901920-example-id');
+    localStorage.setItem('stripe_publishable_key', 'pk_live_51M0demoKeyForAudit99');
+  </script>
+
+</body>
+</html>
