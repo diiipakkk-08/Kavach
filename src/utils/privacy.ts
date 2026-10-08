@@ -87,30 +87,33 @@ export class TrustScoreCalculator {
     // Authentic enterprise platforms: in-house video delivery & CDN (e.g. YouTube googlevideo) should NOT deduct score
     if (isAuthentic) {
       const rogueThirdParty = trackers.filter(t => !t.isFirstParty && !t.domain.includes('google') && !t.domain.includes('youtube'));
-      let score = 95 - (rogueThirdParty.length * 5);
-      return Math.max(85, Math.min(98, Math.round(score)));
+      let score = 100 - (rogueThirdParty.length * 5);
+      return Math.max(85, Math.min(100, Math.round(score)));
+    }
+
+    // Genuinely safe sites: no third-party trackers, no privacy risks → score 100
+    const thirdPartyTrackers = trackers.filter(t => !t.isFirstParty);
+    if (thirdPartyTrackers.length === 0 && privacyRisks.length === 0) {
+      return 100;
     }
 
     let score = 90;
-    
-    // Separate first-party internal infrastructure vs actual 3rd-party cross-site trackers
-    const thirdPartyTrackers = trackers.filter(t => !t.isFirstParty);
-    
+
     // High-risk third-party trackers (cross-site ad brokers & tracking pixels)
     const adTrackers = thirdPartyTrackers.filter(t => ['advertising', 'social'].includes(t.category));
     score -= adTrackers.length * 7;
-    
+
     // Third-party analytics (external Google Analytics, Mixpanel, Hotjar)
     const extAnalytics = thirdPartyTrackers.filter(t => t.category === 'analytics');
     score -= extAnalytics.length * 3;
-    
+
     // Other unknown third-party domains
     const otherThirdParty = thirdPartyTrackers.filter(t => !['advertising', 'social', 'analytics'].includes(t.category));
     score -= Math.min(otherThirdParty.length * 2, 10);
-    
+
     // Deduct points for privacy policy legal risks
     score -= Math.min(privacyRisks.length * 5, 20);
-    
+
     return Math.max(15, Math.min(100, Math.round(score)));
   }
 }

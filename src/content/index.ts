@@ -16,6 +16,7 @@ class ContentScript {
   private pendingInput: HTMLInputElement | null = null;
   private pendingDropTarget: HTMLElement | null = null;
   private cleanedFiles: File[] = [];
+  private lastExifResult: ExifMetadataResult | null = null;
 
   constructor() {
     this.checkOptOutStatus();
@@ -365,10 +366,14 @@ class ContentScript {
     const mediumCount = findings.filter((f: any) => f.severity === 'MEDIUM').length;
     const lowCount = findings.filter((f: any) => f.severity === 'LOW').length;
 
-    // Authentic sites stay high (85-98)
-    // Torrent sites with malvertising and overlays drop sharply to 20-30
-    let baseScore = isAuthenticPlatform ? 95 : 90;
-    const score = Math.max(15, baseScore - (highCount * 30) - (mediumCount * 12) - (lowCount * 5));
+    // No findings at all → perfect score
+    if (findings.length === 0) {
+      return { score: 100, findings, highCount: 0, mediumCount: 0, lowCount: 0, scannedAt: new Date().toISOString() };
+    }
+
+    // Authentic sites: only LOW findings (e.g. standard ad banners) → still cap at 100
+    let baseScore = isAuthenticPlatform ? 100 : 90;
+    const score = Math.max(15, Math.round(baseScore - (highCount * 30) - (mediumCount * 12) - (isAuthenticPlatform ? 0 : (lowCount * 5))));
 
     return { score, findings, highCount, mediumCount, lowCount, scannedAt: new Date().toISOString() };
   }
@@ -600,7 +605,7 @@ class ContentScript {
     modal.querySelector('#kug-close-scripts')?.addEventListener('click', () => modal.remove());
     modal.querySelector('#kug-dismiss-scripts')?.addEventListener('click', () => modal.remove());
     modal.querySelector('#kug-copy-scripts')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(scriptUrls.join('\n'));
+      navigator.clipboard.writeText(scriptUrls.join('const isCritical = localVisionn'));
       this.showToast('📋 All script URLs copied to clipboard!');
     });
 
@@ -1075,12 +1080,21 @@ class ContentScript {
     // 1. Parse real EXIF & GPS binary headers
     if (file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png)$/i)) {
       exifResult = await ExifParser.parseFile(file);
+      this.lastExifResult = exifResult;
 
       // Pre-clean via canvas for instant "Clean & Upload" button
+      // Canvas re-encoding strips ALL EXIF. We then re-embed GPS if present, so only
+      // camera model / software / timestamps are removed — location is preserved.
       try {
         const cleanBlob = await this.canvasReencodeImage(file);
         if (cleanBlob) {
-          this.cleanedFiles = [new File([cleanBlob], file.name, { type: file.type, lastModified: Date.now() })];
+          // Re-embed GPS if the original had GPS coordinates
+          let finalBlob: Blob = cleanBlob;
+          if (exifResult.hasGps && exifResult.gps && (file.type === 'image/jpeg' || file.name.match(/\.(jpg|jpeg)$/i))) {
+            const gpsBlob = await this.reembedGpsIntoJpeg(cleanBlob, exifResult.gps);
+            if (gpsBlob) finalBlob = gpsBlob;
+          }
+          this.cleanedFiles = [new File([finalBlob], file.name, { type: file.type, lastModified: Date.now() })];
         }
       } catch {}
     }
@@ -1128,10 +1142,10 @@ class ContentScript {
     const hasGemmaItems = gemmaData && (gemmaData.hasPII || (gemmaData.detectedItems && gemmaData.detectedItems.length > 0));
 
     const isCritical = hasGps || localVision.riskLevel === 'CRITICAL' || (gemmaData && (gemmaData.riskLevel === 'HIGH' || gemmaData.riskLevel === 'CRITICAL'));
-    const isMedium = hasCamera || hasLocalSecrets || (exif.fieldsFound.length > 0);
+    const isMedium = hasGps || hasCamera || hasLocalSecrets || (exif.fieldsFound.length > 0);
 
     const bannerClass = isCritical ? 'kug-risk-HIGH' : isMedium ? 'kug-risk-MEDIUM' : 'kug-risk-SAFE';
-    const bannerText = isCritical ? '🔴 CRITICAL PRIVACY LEAKS INTERCEPTED' : isMedium ? '🟠 MEDIUM RISK: METADATA / DATA LEAK' : '🟢 FILE SAFE (CLEAN OF PASSWORDS & GPS)';
+    const bannerText = isCritical ? '🔴 CRITICAL PRIVACY LEAKS INTERCEPTED' : isMedium ? '🟠 MEDIUM RISK: METADATA / DATA LEAK' : '🟢 FILE SAFE (CLEAN OF PASSWORDS)';
 
     const fileAudit = FilenameInspector.auditFilename(file.name);
 
@@ -1391,6 +1405,172 @@ class ContentScript {
       img.src = url;
     });
   }
+
+  /**
+   * Re-embeds GPS coordinates into a JPEG blob as a minimal EXIF APP1 segment.
+   * This restores location data stripped by canvas re-encoding, while keeping
+   * camera model, software, and timestamps removed.
+   */
+  private async reembedGpsIntoJpeg(jpegBlob: Blob, gps: { latitude: number; longitude: number; altitude?: number }): Promise<Blob | null> {
+    try {
+      const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+
+      // Verify JPEG SOI marker
+      if (jpegBytes[0] !== 0xFF || jpegBytes[1] !== 0xD8) return null;
+
+      // Build a minimal TIFF/EXIF block containing only a GPS IFD
+      // Layout (little-endian TIFF):
+      //   Byte order mark: II (0x4949)
+      //   Magic: 42 (0x002A)
+      //   IFD0 offset: 8 (points right after header)
+      //   IFD0: 1 entry — GPS IFD pointer (tag 0x8825)
+      //   GPS IFD: 4 entries — GPSLatitudeRef, GPSLatitude, GPSLongitudeRef, GPSLongitude
+      //   (+ GPSAltitude if available)
+
+      const latAbs = Math.abs(gps.latitude);
+      const lonAbs = Math.abs(gps.longitude);
+      const latRef = gps.latitude >= 0 ? 0x4E : 0x53; // 'N' or 'S'
+      const lonRef = gps.longitude >= 0 ? 0x45 : 0x57; // 'E' or 'W'
+
+      // Convert decimal degrees to rational [deg, min, sec] as numerator/denominator pairs (denom=1000000 for precision)
+      const toRationals = (deg: number): [number, number, number, number, number, number] => {
+        const d = Math.floor(deg);
+        const mFull = (deg - d) * 60;
+        const m = Math.floor(mFull);
+        const s = (mFull - m) * 60;
+        const sDen = 1000000;
+        return [d, 1, m, 1, Math.round(s * sDen), sDen];
+      };
+
+      const latR = toRationals(latAbs);
+      const lonR = toRationals(lonAbs);
+      const hasAlt = gps.altitude !== undefined && gps.altitude !== null;
+      const altNum = hasAlt ? Math.round(Math.abs(gps.altitude!) * 100) : 0;
+      const altDen = 100;
+
+      // --- Build the TIFF data block (little-endian) ---
+      // We'll compute offsets carefully.
+      // IFD0 starts at byte 8 (after 8-byte TIFF header).
+      // IFD0 has 1 entry (12 bytes each) + 4-byte next-IFD pointer = 2+12+4=18 bytes.
+      // GPS IFD pointer value (4 bytes) is stored inline in IFD0 entry (tag 0x8825, type LONG).
+      // GPS IFD starts right after IFD0: 8 + 18 = 26.
+      const numGpsEntries = hasAlt ? 6 : 4;
+      // GPS IFD: 2 + numGpsEntries*12 + 4 (next IFD=0)
+      const gpsIfdSize = 2 + numGpsEntries * 12 + 4;
+      const gpsIfdOffset = 26; // where GPS IFD starts in TIFF block
+      // Value data area starts after GPS IFD
+      const valueAreaOffset = gpsIfdOffset + gpsIfdSize;
+
+      // We need to store:
+      // LatRef: 2 bytes inline (ASCII 'N'/'S' + null), fits in 4-byte value field
+      // Lat: 3 rationals = 24 bytes → external
+      // LonRef: 2 bytes inline
+      // Lon: 3 rationals = 24 bytes → external
+      // Alt: 1 rational = 8 bytes → external (if present)
+      // AltRef: 1 byte inline (0 = above sea level)
+
+      const latValOffset = valueAreaOffset;       // 24 bytes
+      const lonValOffset = latValOffset + 24;      // 24 bytes
+      const altValOffset = lonValOffset + 24;      // 8 bytes (if present)
+      const totalTiffSize = altValOffset + (hasAlt ? 8 : 0);
+
+      const tiff = new ArrayBuffer(totalTiffSize);
+      const d = new DataView(tiff);
+
+      // TIFF header (8 bytes)
+      d.setUint16(0, 0x4949, true);   // 'II' little-endian
+      d.setUint16(2, 42, true);        // TIFF magic
+      d.setUint32(4, 8, true);         // IFD0 offset
+
+      // IFD0: 1 entry
+      d.setUint16(8, 1, true);         // entry count
+      // Entry: GPS IFD pointer (tag=0x8825, type=LONG=4, count=1, value=gpsIfdOffset)
+      d.setUint16(10, 0x8825, true);
+      d.setUint16(12, 4, true);        // LONG
+      d.setUint32(14, 1, true);        // count
+      d.setUint32(18, gpsIfdOffset, true); // GPS IFD offset
+      d.setUint32(22, 0, true);        // next IFD = 0 (end)
+
+      // GPS IFD at offset 26
+      d.setUint16(gpsIfdOffset, numGpsEntries, true);
+      let ep = gpsIfdOffset + 2; // entry pointer
+
+      // Helper to write a 12-byte IFD entry
+      const writeEntry = (tag: number, type: number, count: number, valueOrOffset: number) => {
+        d.setUint16(ep, tag, true);
+        d.setUint16(ep + 2, type, true);
+        d.setUint32(ep + 4, count, true);
+        d.setUint32(ep + 8, valueOrOffset, true);
+        ep += 12;
+      };
+
+      // GPS entries in ascending tag order: 0x0001 LatRef, 0x0002 Lat, 0x0003 LonRef, 0x0004 Lon, 0x0005 AltRef, 0x0006 Alt
+      // GPSLatitudeRef (tag 0x0001, type ASCII, count 2, value inline)
+      d.setUint16(ep, 0x0001, true);
+      d.setUint16(ep + 2, 2, true);   // ASCII
+      d.setUint32(ep + 4, 2, true);   // count = 2
+      d.setUint8(ep + 8, latRef);
+      d.setUint8(ep + 9, 0);
+      ep += 12;
+      // GPSLatitude (tag 0x0002, type RATIONAL=5, count 3, offset)
+      writeEntry(0x0002, 5, 3, latValOffset);
+      // GPSLongitudeRef (tag 0x0003, type ASCII, count 2, value inline)
+      d.setUint16(ep, 0x0003, true);
+      d.setUint16(ep + 2, 2, true);
+      d.setUint32(ep + 4, 2, true);
+      d.setUint8(ep + 8, lonRef);
+      d.setUint8(ep + 9, 0);
+      ep += 12;
+      // GPSLongitude (tag 0x0004, type RATIONAL=5, count 3, offset)
+      writeEntry(0x0004, 5, 3, lonValOffset);
+      if (hasAlt) {
+        // GPSAltitudeRef (tag 0x0005, type BYTE, count 1, value 0=above sea level, inline)
+        writeEntry(0x0005, 1, 1, 0);
+        // GPSAltitude (tag 0x0006, type RATIONAL=5, count 1, offset)
+        writeEntry(0x0006, 5, 1, altValOffset);
+      }
+      // Next IFD pointer = 0
+      d.setUint32(ep, 0, true);
+
+      // Write rational values
+      const writeRationals = (offset: number, nums: number[]) => {
+        for (let i = 0; i < nums.length; i += 2) {
+          d.setUint32(offset + i * 4, nums[i], true);
+          d.setUint32(offset + i * 4 + 4, nums[i + 1], true);
+        }
+      };
+      writeRationals(latValOffset, latR);
+      writeRationals(lonValOffset, lonR);
+      if (hasAlt) {
+        d.setUint32(altValOffset, altNum, true);
+        d.setUint32(altValOffset + 4, altDen, true);
+      }
+
+      // Build APP1 segment: marker(2) + length(2) + "Exif\0\0"(6) + tiff data
+      const exifHeader = new Uint8Array([0x45, 0x78, 0x69, 0x66, 0x00, 0x00]); // "Exif\0\0"
+      const app1DataLen = 2 + exifHeader.length + totalTiffSize; // length field includes itself
+      const app1 = new Uint8Array(2 + app1DataLen);
+      app1[0] = 0xFF; app1[1] = 0xE1; // APP1 marker
+      app1[2] = (app1DataLen >> 8) & 0xFF;
+      app1[3] = app1DataLen & 0xFF;
+      app1.set(exifHeader, 4);
+      app1.set(new Uint8Array(tiff), 4 + exifHeader.length);
+
+      // Insert APP1 right after JPEG SOI (0xFFD8), before any existing marker
+      // If there's already an APP1 from canvas (unlikely), insert before it
+      const soi = jpegBytes.slice(0, 2);
+      const rest = jpegBytes.slice(2);
+      const combined = new Uint8Array(soi.length + app1.length + rest.length);
+      combined.set(soi, 0);
+      combined.set(app1, 2);
+      combined.set(rest, 2 + app1.length);
+
+      return new Blob([combined], { type: 'image/jpeg' });
+    } catch {
+      return null;
+    }
+  }
+
 
   private fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
